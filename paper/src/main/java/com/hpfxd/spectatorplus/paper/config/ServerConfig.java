@@ -8,6 +8,7 @@ public class ServerConfig {
     public final boolean workaroundsAllowFallback;
 
     public final boolean screensRequireClientMod;
+    public final String forcedSyncPlayerName;
 
     public ServerConfig(ConfigurationSection config) {
         this.workaroundTeleportTicker = config.getBoolean("workarounds.auto-update-position");
@@ -15,5 +16,6 @@ public class ServerConfig {
         this.workaroundsAllowFallback = config.getBoolean("workarounds.allow-fallback");
 
         this.screensRequireClientMod = config.getBoolean("screens.require-client-mod");
+        this.forcedSyncPlayerName = config.getString("sync.forced-player-name", "");
     }
 }

@@ -14,12 +14,16 @@ import com.hpfxd.spectatorplus.paper.sync.handler.screen.ScreenSyncHandler;
 import com.hpfxd.spectatorplus.paper.sync.packet.ServerboundOpenedInventorySyncPacket;
 import com.hpfxd.spectatorplus.paper.sync.packet.ServerboundRequestInventoryOpenPacket;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.Optional;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -27,9 +31,11 @@ public class ServerSyncController implements PluginMessageListener {
     private final SpectatorPlugin plugin;
     private final ScreenSyncHandler screenSyncHandler;
     private final InventorySyncHandler inventorySyncHandler;
+    private final String forcedSyncPlayerName;
 
     public ServerSyncController(SpectatorPlugin plugin) {
         this.plugin = plugin;
+        this.forcedSyncPlayerName = plugin.getServerConfig().forcedSyncPlayerName;
 
         for (final NamespacedKey key : SyncPackets.CLIENTBOUND.keySet()) {
             Bukkit.getMessenger().registerOutgoingPluginChannel(plugin, key.asString());
@@ -67,6 +73,12 @@ public class ServerSyncController implements PluginMessageListener {
     }
 
     public Iterable<Player> getSpectators(Player target, Predicate<Player> predicate) {
+        final Optional<Player> forced = this.getForcedSyncPlayer();
+
+        if (forced.isPresent()) {
+            return Iterables.filter(new ArrayList<>(Bukkit.getOnlinePlayers()), spectator -> spectator.getGameMode() == GameMode.SPECTATOR && predicate.test(spectator));
+        }
+
         return Iterables.filter(target.getWorld().getPlayers(), p -> target.equals(p.getSpectatorTarget()) && predicate.test(p));
     }
 
@@ -76,6 +88,22 @@ public class ServerSyncController implements PluginMessageListener {
 
     public void broadcastPacketToSpectators(Player target, String permission, ClientboundSyncPacket packet) {
         this.sendPacket(this.getSpectators(target, permission), packet);
+    }
+
+    public Optional<Player> getForcedSyncPlayer() {
+        if (this.forcedSyncPlayerName == null || this.forcedSyncPlayerName.isBlank()) {
+            return Optional.empty();
+        }
+
+        return Optional.ofNullable(Bukkit.getPlayerExact(this.forcedSyncPlayerName));
+    }
+
+    public Player resolveDataPlayer(Player fallback) {
+        return this.getForcedSyncPlayer().orElse(fallback);
+    }
+
+    public UUID resolveDataPlayerId(Player fallback) {
+        return this.resolveDataPlayer(fallback).getUniqueId();
     }
 
     public ScreenSyncHandler getScreenSyncHandler() {

@@ -23,6 +23,19 @@ In order for all of the mod's features to be enabled, the mod needs to be instal
 This is because Minecraft normally does not send some needed data to clients. Fabric and Paper are supported for the
 server-side.
 
+## Configuration
+
+The Paper plugin ships with a `config.yml` that controls optional behavior. To always mirror a specific player's
+inventory, HUD, and screen data to every spectator (regardless of who they're currently spectating), set the
+`sync.forced-player-name` value to that player's exact in-game name, for example:
+
+```yaml
+sync:
+  forced-player-name: "Packetsss"
+```
+
+Leave the value blank to revert to the default behavior of syncing the actively spectated player.
+
 ## Permissions
 
 SpectatorPlus has permissions included that you can use to control which players receive extra information about the

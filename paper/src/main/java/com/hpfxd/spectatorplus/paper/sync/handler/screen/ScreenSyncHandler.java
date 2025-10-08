@@ -66,7 +66,7 @@ public class ScreenSyncHandler implements Listener {
         return this.screens.containsKey(spectator.getUniqueId());
     }
 
-    private void openSyncedContainer(Player spectator, InventoryView targetView) {
+    private void openSyncedContainer(Player spectator, InventoryView targetView, Player dataPlayer) {
         // todo MERCHANT
 
         switch (targetView.getType()) {
@@ -82,7 +82,7 @@ public class ScreenSyncHandler implements Listener {
             case BLAST_FURNACE:
             case LECTERN:
             case SMOKER:
-                this.openSyncedDirectContainer(spectator, targetView);
+                this.openSyncedDirectContainer(spectator, targetView, dataPlayer);
                 break;
             case WORKBENCH:
             case LOOM:
@@ -93,24 +93,31 @@ public class ScreenSyncHandler implements Listener {
             case ENDER_CHEST:
             case ENCHANTING:
             case CARTOGRAPHY:
-                this.openSyncedReplicaContainer(spectator, targetView);
+                this.openSyncedReplicaContainer(spectator, targetView, dataPlayer);
                 break;
             case CRAFTING:
             case CREATIVE:
-                this.openSyncedCraftingContainer(spectator, targetView);
+                this.openSyncedCraftingContainer(spectator, targetView, dataPlayer);
                 break;
         }
     }
 
     public void onRequestOpen(Player spectator, Player target) {
         if (spectator.hasPermission(INVENTORY_PERMISSION)) {
-            this.openPlayerInventory(spectator, target);
+            final Player dataPlayer = this.plugin.getSyncController().resolveDataPlayer(target);
+            this.openPlayerInventory(spectator, dataPlayer);
         } else {
             spectator.sendMessage(Component.translatable("spectatorplus.no-inventory-permission", NamedTextColor.RED));
         }
     }
 
     public void onPlayerOpenInventory(Player target) {
+        final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
+        if (forced != null && !forced.equals(target)) {
+            return;
+        }
+
         try {
             this.ignoreInventoryEvents = true;
 
@@ -121,7 +128,7 @@ public class ScreenSyncHandler implements Listener {
                     if (!this.canOverrideSpectatorView(spectator, spectator.getOpenInventory())) {
                         continue;
                     }
-                    this.openSyncedContainer(spectator, view);
+                    this.openSyncedContainer(spectator, view, target);
                 }
             }
         } finally {
@@ -129,31 +136,31 @@ public class ScreenSyncHandler implements Listener {
         }
     }
 
-    private void openPlayerInventory(Player spectator, Player target) {
-        final SyncedScreen screen = new SyncedPlayerInventory(spectator, target.getInventory());
+    private void openPlayerInventory(Player spectator, Player dataPlayer) {
+        final SyncedScreen screen = new SyncedPlayerInventory(spectator, dataPlayer.getInventory());
 
-        this.setScreen(spectator, screen);
+        this.setScreen(spectator, screen, dataPlayer);
     }
 
-    private void openSyncedDirectContainer(Player spectator, InventoryView targetView) {
+    private void openSyncedDirectContainer(Player spectator, InventoryView targetView, Player dataPlayer) {
         final SyncedScreen screen = new DirectSyncedContainer(spectator, targetView);
 
-        this.setScreen(spectator, screen);
+        this.setScreen(spectator, screen, dataPlayer);
     }
 
-    private void openSyncedReplicaContainer(Player spectator, InventoryView targetView) {
+    private void openSyncedReplicaContainer(Player spectator, InventoryView targetView, Player dataPlayer) {
         final SyncedScreen screen = new ReplicaSyncedContainer(spectator, targetView);
 
-        this.setScreen(spectator, screen);
+        this.setScreen(spectator, screen, dataPlayer);
     }
 
-    private void openSyncedCraftingContainer(Player spectator, InventoryView targetView) {
+    private void openSyncedCraftingContainer(Player spectator, InventoryView targetView, Player dataPlayer) {
         final SyncedScreen screen = new CraftingSyncedContainer(spectator, targetView);
 
-        this.setScreen(spectator, screen);
+        this.setScreen(spectator, screen, dataPlayer);
     }
 
-    private void setScreen(Player spectator, SyncedScreen screen) {
+    private void setScreen(Player spectator, SyncedScreen screen, Player dataPlayer) {
         final boolean hasClientMod = spectator.getListeningPluginChannels().contains(ClientboundScreenSyncPacket.ID.asString());
 
         if (!hasClientMod && (this.plugin.getServerConfig().screensRequireClientMod || screen.requiresClientMod())) {
@@ -163,7 +170,7 @@ public class ScreenSyncHandler implements Listener {
 
         this.screens.put(spectator.getUniqueId(), screen);
 
-        this.plugin.getSyncController().sendPacket(spectator, ClientboundScreenSyncPacket.of(spectator.getSpectatorTarget().getUniqueId(), screen.isSurvivalInventory(), screen.isRequestedByClient(), true));
+        this.plugin.getSyncController().sendPacket(spectator, ClientboundScreenSyncPacket.of(dataPlayer.getUniqueId(), screen.isSurvivalInventory(), screen.isRequestedByClient(), true));
 
         if (spectator.hasPermission(INVENTORY_PERMISSION)) {
             if (screen.getBottomInventory() instanceof final PlayerInventory inventory) {
@@ -181,16 +188,24 @@ public class ScreenSyncHandler implements Listener {
             return;
         }
 
+        final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
+        if (forced != null && !forced.equals(event.getPlayer())) {
+            return;
+        }
+
         try {
             this.ignoreInventoryEvents = true;
 
-            for (final Player spectator : this.plugin.getSyncController().getSpectators((Player) event.getPlayer(), PERMISSION)) {
+            final Player dataPlayer = forced != null ? forced : (Player) event.getPlayer();
+
+            for (final Player spectator : this.plugin.getSyncController().getSpectators(dataPlayer, PERMISSION)) {
                 // if the player currently has an inventory screen already open, we want to skip opening this new inventory
                 if (!this.canOverrideSpectatorView(spectator, spectator.getOpenInventory())) {
                     continue;
                 }
 
-                this.openSyncedContainer(spectator, event.getView());
+                this.openSyncedContainer(spectator, event.getView(), dataPlayer);
             }
         } finally {
             this.ignoreInventoryEvents = false;
@@ -243,11 +258,12 @@ public class ScreenSyncHandler implements Listener {
         }
 
         if (event.getNewSpectatorTarget() instanceof final Player target && spectator.hasPermission(PERMISSION)) {
-            final InventoryView view = target.getOpenInventory();
+            final Player dataPlayer = this.plugin.getSyncController().resolveDataPlayer(target);
+            final InventoryView view = dataPlayer.getOpenInventory();
 
             // Only open if the current view is not CRAFTING or CREATIVE
             if (view.getType() != InventoryType.CRAFTING && view.getType() != InventoryType.CREATIVE) {
-                Bukkit.getScheduler().runTask(this.plugin, () -> this.openSyncedContainer(spectator, view));
+                Bukkit.getScheduler().runTask(this.plugin, () -> this.openSyncedContainer(spectator, view, dataPlayer));
             }
         }
     }
@@ -272,6 +288,12 @@ public class ScreenSyncHandler implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onClickMonitor(InventoryClickEvent event) {
         if (event.getWhoClicked() instanceof final Player player) {
+            final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
+            if (forced != null && !forced.equals(player)) {
+                return;
+            }
+
             final int slot = event.getRawSlot();
 
             switch (event.getAction()) {
@@ -285,6 +307,12 @@ public class ScreenSyncHandler implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onDragMonitor(InventoryDragEvent event) {
         if (event.getWhoClicked() instanceof final Player player) {
+            final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
+            if (forced != null && !forced.equals(player)) {
+                return;
+            }
+
             final ItemStack cursor = event.getCursor() == null ? ItemStack.empty() : event.getCursor();
             this.updateCursor(player, event.getView(), event.getRawSlots().iterator().next(), cursor);
         }

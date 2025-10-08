@@ -33,45 +33,56 @@ public class InventorySyncHandler implements Listener {
     }
 
     public void tick() {
+        final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
+        if (forced != null) {
+            this.updatePlayer(forced);
+            return;
+        }
+
         for (final Player player : Bukkit.getOnlinePlayers()) {
-            final ItemStack[] slots = this.playerInventories.computeIfAbsent(player.getUniqueId(), k -> {
-                final ItemStack[] arr = new ItemStack[ClientboundInventorySyncPacket.ITEMS_LENGTH];
-                Arrays.fill(arr, ItemStack.empty());
-                return arr;
-            });
+            this.updatePlayer(player);
+        }
+    }
 
-            final ItemStack[] inventorySendSlots = new ItemStack[ClientboundInventorySyncPacket.ITEMS_LENGTH];
-            final ItemStack[] hotbarSendSlots = new ItemStack[ClientboundHotbarSyncPacket.ITEMS_LENGTH];
+    private void updatePlayer(Player player) {
+        final ItemStack[] slots = this.playerInventories.computeIfAbsent(player.getUniqueId(), k -> {
+            final ItemStack[] arr = new ItemStack[ClientboundInventorySyncPacket.ITEMS_LENGTH];
+            Arrays.fill(arr, ItemStack.empty());
+            return arr;
+        });
 
-            boolean updatedHotbar = false;
-            boolean updatedInventory = false;
+        final ItemStack[] inventorySendSlots = new ItemStack[ClientboundInventorySyncPacket.ITEMS_LENGTH];
+        final ItemStack[] hotbarSendSlots = new ItemStack[ClientboundHotbarSyncPacket.ITEMS_LENGTH];
 
-            for (int i = 0; i < ClientboundInventorySyncPacket.ITEMS_LENGTH; i++) {
-                ItemStack item = player.getInventory().getItem(i);
-                if (item == null) {
-                    item = ItemStack.empty();
+        boolean updatedHotbar = false;
+        boolean updatedInventory = false;
+
+        for (int i = 0; i < ClientboundInventorySyncPacket.ITEMS_LENGTH; i++) {
+            ItemStack item = player.getInventory().getItem(i);
+            if (item == null) {
+                item = ItemStack.empty();
+            }
+
+            if (!item.equals(slots[i])) {
+                slots[i] = item.clone();
+
+                inventorySendSlots[i] = item;
+                updatedInventory = true;
+
+                if (i < ClientboundHotbarSyncPacket.ITEMS_LENGTH) {
+                    hotbarSendSlots[i] = item;
+                    updatedHotbar = true;
                 }
-
-                if (!item.equals(slots[i])) {
-                    slots[i] = item.clone();
-
-                    inventorySendSlots[i] = item;
-                    updatedInventory = true;
-
-                    if (i < ClientboundHotbarSyncPacket.ITEMS_LENGTH) {
-                        hotbarSendSlots[i] = item;
-                        updatedHotbar = true;
-                    }
-                }
             }
+        }
 
-            if (updatedInventory) {
-                this.plugin.getSyncController().getScreenSyncHandler().updatePlayerInventory(player, inventorySendSlots);
-            }
+        if (updatedInventory) {
+            this.plugin.getSyncController().getScreenSyncHandler().updatePlayerInventory(player, inventorySendSlots);
+        }
 
-            if (updatedHotbar) {
-                this.plugin.getSyncController().broadcastPacketToSpectators(player, HOTBAR_PERMISSION, new ClientboundHotbarSyncPacket(player.getUniqueId(), hotbarSendSlots));
-            }
+        if (updatedHotbar) {
+            this.plugin.getSyncController().broadcastPacketToSpectators(player, HOTBAR_PERMISSION, new ClientboundHotbarSyncPacket(player.getUniqueId(), hotbarSendSlots));
         }
     }
 
@@ -94,9 +105,10 @@ public class InventorySyncHandler implements Listener {
         final Player spectator = event.getPlayer();
 
         if (event.getNewSpectatorTarget() instanceof final Player target && spectator.hasPermission(HOTBAR_PERMISSION)) {
+            final Player dataPlayer = this.plugin.getSyncController().resolveDataPlayer(target);
             final ItemStack[] slots = new ItemStack[ClientboundHotbarSyncPacket.ITEMS_LENGTH];
             for (int slot = 0; slot < slots.length; slot++) {
-                ItemStack item = target.getInventory().getItem(slot);
+                ItemStack item = dataPlayer.getInventory().getItem(slot);
                 if (item == null) {
                     item = ItemStack.empty();
                 }
@@ -104,7 +116,7 @@ public class InventorySyncHandler implements Listener {
                 slots[slot] = item;
             }
 
-            this.plugin.getSyncController().sendPacket(spectator, new ClientboundHotbarSyncPacket(target.getUniqueId(), slots));
+            this.plugin.getSyncController().sendPacket(spectator, new ClientboundHotbarSyncPacket(dataPlayer.getUniqueId(), slots));
         }
     }
 

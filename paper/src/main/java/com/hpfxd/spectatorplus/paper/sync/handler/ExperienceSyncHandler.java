@@ -30,14 +30,24 @@ public class ExperienceSyncHandler implements Listener {
     private void tick() {
         // unfortunately the PlayerExpChangeEvent does not capture all experience changes, so we need to track players
         // in every tick and compare to the amount in the last tick in order to be accurate.
+        final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
+        if (forced != null) {
+            this.updatePlayer(forced);
+            return;
+        }
 
         for (final Player player : Bukkit.getOnlinePlayers()) {
-            final int current = player.calculateTotalExperiencePoints();
-            final int old = this.playerExperience.put(player.getUniqueId(), current);
+            this.updatePlayer(player);
+        }
+    }
 
-            if (current != old) {
-                this.plugin.getSyncController().broadcastPacketToSpectators(player, PERMISSION, new ClientboundExperienceSyncPacket(player.getUniqueId(), player.getExp(), current, player.getLevel()));
-            }
+    private void updatePlayer(Player player) {
+        final int current = player.calculateTotalExperiencePoints();
+        final int old = this.playerExperience.put(player.getUniqueId(), current);
+
+        if (current != old) {
+            this.plugin.getSyncController().broadcastPacketToSpectators(player, PERMISSION, new ClientboundExperienceSyncPacket(player.getUniqueId(), player.getExp(), current, player.getLevel()));
         }
     }
 
@@ -46,7 +56,8 @@ public class ExperienceSyncHandler implements Listener {
         final Player spectator = event.getPlayer();
 
         if (event.getNewSpectatorTarget() instanceof final Player target && spectator.hasPermission(PERMISSION)) {
-            this.plugin.getSyncController().sendPacket(spectator, new ClientboundExperienceSyncPacket(target.getUniqueId(), target.getExp(), target.getExperiencePointsNeededForNextLevel(), target.getLevel()));
+            final Player dataPlayer = this.plugin.getSyncController().resolveDataPlayer(target);
+            this.plugin.getSyncController().sendPacket(spectator, new ClientboundExperienceSyncPacket(dataPlayer.getUniqueId(), dataPlayer.getExp(), dataPlayer.getExperiencePointsNeededForNextLevel(), dataPlayer.getLevel()));
         }
     }
 

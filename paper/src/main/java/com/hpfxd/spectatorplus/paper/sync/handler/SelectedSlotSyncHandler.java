@@ -26,13 +26,21 @@ public class SelectedSlotSyncHandler implements Listener {
         final Player spectator = event.getPlayer();
 
         if (event.getNewSpectatorTarget() instanceof final Player target && spectator.hasPermission(HOTBAR_PERMISSION)) {
-            this.plugin.getSyncController().sendPacket(spectator, new ClientboundSelectedSlotSyncPacket(target.getUniqueId(), target.getInventory().getHeldItemSlot()));
+            final Player dataPlayer = this.plugin.getSyncController().resolveDataPlayer(target);
+            this.plugin.getSyncController().sendPacket(spectator, new ClientboundSelectedSlotSyncPacket(dataPlayer.getUniqueId(), dataPlayer.getInventory().getHeldItemSlot()));
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onChangeHeldItem(PlayerItemHeldEvent event) {
         final Player target = event.getPlayer();
-        this.plugin.getSyncController().broadcastPacketToSpectators(target, HOTBAR_PERMISSION, new ClientboundSelectedSlotSyncPacket(target.getUniqueId(), event.getNewSlot()));
+        final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
+        if (forced != null && !forced.equals(target)) {
+            return;
+        }
+
+        final Player dataPlayer = forced != null ? forced : target;
+        this.plugin.getSyncController().broadcastPacketToSpectators(dataPlayer, HOTBAR_PERMISSION, new ClientboundSelectedSlotSyncPacket(dataPlayer.getUniqueId(), event.getNewSlot()));
     }
 }

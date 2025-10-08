@@ -24,7 +24,14 @@ public class FoodSyncHandler implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onFoodLevelChange(FoodLevelChangeEvent event) {
         if (event.getEntity() instanceof final Player player) {
-            this.plugin.getSyncController().broadcastPacketToSpectators(player, PERMISSION, new ClientboundFoodSyncPacket(player.getUniqueId(), event.getFoodLevel(), player.getSaturation()));
+            final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
+            if (forced != null && !forced.equals(player)) {
+                return;
+            }
+
+            final Player dataPlayer = forced != null ? forced : player;
+            this.plugin.getSyncController().broadcastPacketToSpectators(dataPlayer, PERMISSION, new ClientboundFoodSyncPacket(dataPlayer.getUniqueId(), event.getFoodLevel(), dataPlayer.getSaturation()));
         }
     }
 
@@ -33,7 +40,8 @@ public class FoodSyncHandler implements Listener {
         final Player spectator = event.getPlayer();
 
         if (event.getNewSpectatorTarget() instanceof final Player target && spectator.hasPermission(PERMISSION)) {
-            this.plugin.getSyncController().sendPacket(spectator, new ClientboundFoodSyncPacket(target.getUniqueId(), target.getFoodLevel(), target.getSaturation()));
+            final Player dataPlayer = this.plugin.getSyncController().resolveDataPlayer(target);
+            this.plugin.getSyncController().sendPacket(spectator, new ClientboundFoodSyncPacket(dataPlayer.getUniqueId(), dataPlayer.getFoodLevel(), dataPlayer.getSaturation()));
         }
     }
 }

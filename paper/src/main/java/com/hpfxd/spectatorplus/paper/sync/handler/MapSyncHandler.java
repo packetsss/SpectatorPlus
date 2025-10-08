@@ -2,6 +2,7 @@ package com.hpfxd.spectatorplus.paper.sync.handler;
 
 import com.destroystokyo.paper.event.player.PlayerStartSpectatingEntityEvent;
 import com.hpfxd.spectatorplus.paper.SpectatorPlugin;
+import org.bukkit.GameMode;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -33,7 +34,10 @@ public class MapSyncHandler implements Listener {
      */
     private static final int MAP_UPDATE_FREQUENCY = 30 * 20;
 
+    private final SpectatorPlugin plugin;
+
     public MapSyncHandler(SpectatorPlugin plugin) {
+        this.plugin = plugin;
         Bukkit.getPluginManager().registerEvents(this, plugin);
         Bukkit.getScheduler().runTaskTimer(plugin, this::updateAll, 0, MAP_UPDATE_FREQUENCY);
     }
@@ -42,14 +46,27 @@ public class MapSyncHandler implements Listener {
     public void onStartSpectatingEntity(PlayerStartSpectatingEntityEvent event) {
         final Player spectator = event.getPlayer();
 
+        final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
+        if (forced != null) {
+            this.sendMaps(forced, spectator);
+            return;
+        }
+
         if (event.getNewSpectatorTarget() instanceof final Player target) {
-           this.sendMaps(target, spectator);
+            this.sendMaps(target, spectator);
         }
     }
 
     private void updateAll() {
+        final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
+
         for (final Player spectator : Bukkit.getOnlinePlayers()) {
-            if (spectator.getSpectatorTarget() instanceof final Player target) {
+            if (forced != null) {
+                if (spectator.getGameMode() == GameMode.SPECTATOR) {
+                    this.sendMaps(forced, spectator);
+                }
+            } else if (spectator.getSpectatorTarget() instanceof final Player target) {
                 this.sendMaps(target, spectator);
             }
         }
