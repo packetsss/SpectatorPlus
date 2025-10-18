@@ -9,11 +9,10 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
-import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
 
 public class FoodSyncHandler implements Listener {
     private static final String PERMISSION = "spectatorplus.sync.food";
+    private static final long UPDATE_INTERVAL_TICKS = 20; // roughly every second
 
     private final SpectatorPlugin plugin;
 
@@ -21,6 +20,7 @@ public class FoodSyncHandler implements Listener {
         this.plugin = plugin;
 
         Bukkit.getPluginManager().registerEvents(this, plugin);
+        Bukkit.getScheduler().runTaskTimer(plugin, this::broadcastPeriodicUpdates, UPDATE_INTERVAL_TICKS, UPDATE_INTERVAL_TICKS);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -33,18 +33,9 @@ public class FoodSyncHandler implements Listener {
             }
 
             final Player dataPlayer = forced != null ? forced : player;
-            this.plugin.getSyncController().broadcastPacketToSpectators(dataPlayer, PERMISSION, new ClientboundFoodSyncPacket(dataPlayer.getUniqueId(), event.getFoodLevel(), dataPlayer.getSaturation()));
+            final int foodLevel = forced != null ? dataPlayer.getFoodLevel() : event.getFoodLevel();
+            this.sendHungerUpdate(dataPlayer, foodLevel, dataPlayer.getSaturation());
         }
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onDeath(PlayerDeathEvent event) {
-        this.scheduleFoodSync(event.getEntity());
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR)
-    public void onRespawn(PlayerRespawnEvent event) {
-        this.scheduleFoodSync(event.getPlayer());
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -57,18 +48,24 @@ public class FoodSyncHandler implements Listener {
         }
     }
 
-    private void scheduleFoodSync(Player player) {
-        Bukkit.getScheduler().runTask(this.plugin, () -> this.broadcastCurrentFood(player));
-    }
-
-    private void broadcastCurrentFood(Player player) {
+    private void broadcastPeriodicUpdates() {
         final Player forced = this.plugin.getSyncController().getForcedSyncPlayer().orElse(null);
 
-        if (forced != null && !forced.equals(player)) {
+        if (forced != null) {
+            this.broadcastCurrentState(forced);
             return;
         }
 
-        final Player dataPlayer = forced != null ? forced : player;
-        this.plugin.getSyncController().broadcastPacketToSpectators(dataPlayer, PERMISSION, new ClientboundFoodSyncPacket(dataPlayer.getUniqueId(), dataPlayer.getFoodLevel(), dataPlayer.getSaturation()));
+        for (final Player player : Bukkit.getOnlinePlayers()) {
+            this.broadcastCurrentState(player);
+        }
+    }
+
+    private void broadcastCurrentState(Player dataPlayer) {
+        this.sendHungerUpdate(dataPlayer, dataPlayer.getFoodLevel(), dataPlayer.getSaturation());
+    }
+
+    private void sendHungerUpdate(Player dataPlayer, int foodLevel, float saturation) {
+        this.plugin.getSyncController().broadcastPacketToSpectators(dataPlayer, PERMISSION, new ClientboundFoodSyncPacket(dataPlayer.getUniqueId(), foodLevel, saturation));
     }
 }
