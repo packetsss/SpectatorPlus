@@ -67,21 +67,25 @@ public class InventorySyncHandler implements Listener {
             if (!item.equals(slots[i])) {
                 slots[i] = item.clone();
 
-                inventorySendSlots[i] = item;
                 updatedInventory = true;
 
                 if (i < ClientboundHotbarSyncPacket.ITEMS_LENGTH) {
-                    hotbarSendSlots[i] = item;
                     updatedHotbar = true;
                 }
             }
         }
 
         if (updatedInventory) {
+            for (int i = 0; i < ClientboundInventorySyncPacket.ITEMS_LENGTH; i++) {
+                inventorySendSlots[i] = slots[i];
+            }
             this.plugin.getSyncController().getScreenSyncHandler().updatePlayerInventory(player, inventorySendSlots);
         }
 
         if (updatedHotbar) {
+            for (int i = 0; i < ClientboundHotbarSyncPacket.ITEMS_LENGTH; i++) {
+                hotbarSendSlots[i] = slots[i];
+            }
             this.plugin.getSyncController().broadcastPacketToSpectators(player, HOTBAR_PERMISSION, new ClientboundHotbarSyncPacket(player.getUniqueId(), hotbarSendSlots));
         }
     }
